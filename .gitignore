@@ -1,4 +1,5 @@
 # ignore files added to these directories
+data/*
 logs/*
 temp/*
 config/*

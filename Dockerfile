@@ -1,34 +1,40 @@
-FROM debian:8.0
+FROM ubuntu:trusty-20150806
 MAINTAINER Alex Brandt <alunduil@alunduil.com>
+MAINTAINER Scott Fan <fancp2007@gmail.com>
 
-EXPOSE 80 443
+#RUN sed -i.bak 's/archive.ubuntu.com/cn.archive.ubuntu.com/g' /etc/apt/sources.list
 
-RUN apt-get -qq update
-RUN apt-get install -qq apache2-mpm-event ca-certificates
+RUN echo 'APT::Install-Recommends 0;' >> /etc/apt/apt.conf.d/01norecommends \
+ && echo 'APT::Install-Suggests 0;' >> /etc/apt/apt.conf.d/01norecommends \
+ && apt-get update \
+ && apt-get install -y vim.tiny wget sudo net-tools ca-certificates unzip \
+ && apt-get install -y mysql-client postgresql-client apache2-mpm-event php5 php-pear php5-mysql php5-pgsql php5-sqlite \
+ && pear install mail_mime mail_mimedecode net_smtp net_idna2-beta auth_sasl net_sieve crypt_gpg \
+ && update-locale LANG=C.UTF-8 LC_MESSAGES=POSIX \
+ && locale-gen en_US.UTF-8 \
+ && dpkg-reconfigure locales \
+ && rm -rf /var/lib/apt/lists/*
 
-RUN sed -e 's|/var/www/html|/var/www/public_html|' -e 's@\(Log \+\)[^ ]\+@\1"|/bin/cat"@' -i /etc/apache2/sites-available/000-default.conf
-RUN a2ensite 000-default
+ENV RCMAIL_INSTALL_DIR="/var/www"
 
-RUN sed -e 's|/var/www/html|/var/www/public_html|' -e 's@\(Log \+\)[^ ]\+@\1"|/bin/cat"@' -i /etc/apache2/sites-available/default-ssl.conf
-RUN sed -e '/SSLCertificateKeyFile/s|ssl-cert-snakeoil.key|ssl-cert.key|' -e '/SSLCertificateFile/s|ssl-cert-snakeoil.pem|ssl-cert.pem|' -i /etc/apache2/sites-available/default-ssl.conf
-RUN ln -snf ssl-cert-snakeoil.pem /etc/ssl/certs/ssl-cert.pem
-RUN ln -snf ssl-cert-snakeoil.key /etc/ssl/private/ssl-cert.key
-RUN a2ensite default-ssl
+ENV RCMAIL_CERTS_DIR="${RCMAIL_INSTALL_DIR}/certs" \
+        RCMAIL_DATA_DIR="${RCMAIL_INSTALL_DIR}/data" \
+        RCMAIL_LOG_DIR="${RCMAIL_INSTALL_DIR}/logs"
 
-RUN a2enmod expires
-RUN a2enmod headers
-RUN a2enmod ssl
+RUN rm -rf ${RCMAIL_INSTALL_DIR}
+ADD . ${RCMAIL_INSTALL_DIR}
 
-RUN apt-get install -qq php5 php-pear php5-mysql php5-pgsql php5-sqlite
-RUN pear install mail_mime mail_mimedecode net_smtp net_idna2-beta auth_sasl net_sieve crypt_gpg
+RUN rm -rf ${RCMAIL_INSTALL_DIR}/installer
+RUN rm -rf ${RCMAIL_INSTALL_DIR}/entrypoint.sh
+RUN rm -rf ${RCMAIL_INSTALL_DIR}/Dockerfile
+RUN rm -rf ${RCMAIL_INSTALL_DIR}/docker-compose.yml
 
-RUN rm -rf /var/www
-ADD . /var/www
+COPY entrypoint.sh /sbin/entrypoint.sh
+RUN chmod 755 /sbin/entrypoint.sh
 
-RUN echo -e '<?php\n$config = array();\n' > /var/www/config/config.inc.php
-RUN rm -rf /var/www/installer
+EXPOSE 80/tcp 443/tcp
 
-RUN . /etc/apache2/envvars && chown -R ${APACHE_RUN_USER}:${APACHE_RUN_GROUP} /var/www/temp /var/www/logs
-
-ENTRYPOINT [ "/usr/sbin/apache2ctl", "-D", "FOREGROUND" ]
-CMD [ "-k", "start" ]
+VOLUME ["${RCMAIL_CERTS_DIR}", "${RCMAIL_DATA_DIR}", "${RCMAIL_LOG_DIR}"]
+WORKDIR ${RCMAIL_INSTALL_DIR}
+ENTRYPOINT ["/sbin/entrypoint.sh"]
+CMD ["app:start"]
